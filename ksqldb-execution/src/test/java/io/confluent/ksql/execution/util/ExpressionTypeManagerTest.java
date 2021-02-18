@@ -430,6 +430,46 @@ public class ExpressionTypeManagerTest {
   }
 
   @Test
+  public void shouldEvaluateLambdaInUDFWithMapDiffArgNames() {
+    // Given:
+    givenUdfWithNameAndReturnType("TRANSFORM", SqlTypes.DOUBLE);
+    final Expression expression =
+        new FunctionCall(
+            FunctionName.of("TRANSFORM"),
+            ImmutableList.of(
+                MAPCOL,
+                new LambdaFunctionCall(
+                    ImmutableList.of("X", "Y"),
+                    new ArithmeticBinaryExpression(
+                        Operator.ADD,
+                        new LambdaVariable("X"),
+                        new LambdaVariable("Y"))),
+                new LambdaFunctionCall(
+                    ImmutableList.of("K", "V"),
+                    new ArithmeticBinaryExpression(
+                        Operator.MULTIPLY,
+                        new LambdaVariable("K"),
+                        new LambdaVariable("V")))
+            ));
+
+    // When:
+    final SqlType exprType = expressionTypeManager.getExpressionSqlType(expression);
+
+    // Then:
+    assertThat(exprType, is(SqlTypes.DOUBLE));
+    verify(udfFactory).getFunction(
+        ImmutableList.of(
+            SqlArgument.of(SqlTypes.map(SqlTypes.BIGINT, SqlTypes.DOUBLE)),
+            SqlArgument.of(SqlLambda.of(ImmutableList.of(SqlTypes.BIGINT, SqlTypes.DOUBLE), SqlTypes.DOUBLE)),
+            SqlArgument.of(SqlLambda.of(ImmutableList.of(SqlTypes.BIGINT, SqlTypes.DOUBLE), SqlTypes.DOUBLE))));
+    verify(function).getReturnType(
+        ImmutableList.of(
+            SqlArgument.of(SqlTypes.map(SqlTypes.BIGINT, SqlTypes.DOUBLE)),
+            SqlArgument.of(SqlLambda.of(ImmutableList.of(SqlTypes.BIGINT, SqlTypes.DOUBLE), SqlTypes.DOUBLE)),
+            SqlArgument.of(SqlLambda.of(ImmutableList.of(SqlTypes.BIGINT, SqlTypes.DOUBLE), SqlTypes.DOUBLE))));
+  }
+
+  @Test
   public void shouldEvaluateAnyNumberOfArgumentLambda() {
     // Given:
     givenUdfWithNameAndReturnType("TRANSFORM", SqlTypes.STRING);

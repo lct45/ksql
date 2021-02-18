@@ -188,6 +188,29 @@ public class CodeGenRunner {
       final List<SqlArgument> argumentTypes = new ArrayList<>();
       final FunctionName functionName = node.getName();
       for (final Expression argExpr : node.getArguments()) {
+        final TypeContext childContext = context.getCopy();
+        final SqlType newSqlType = expressionTypeManager.getExpressionSqlType(argExpr, childContext);
+
+        if (argExpr instanceof LambdaFunctionCall) {
+          argumentTypes.add(SqlArgument.of(SqlLambda.of(context.getLambdaInputTypes(), childContext.getSqlType())));
+        } else {
+          argumentTypes.add(SqlArgument.of(newSqlType));
+          if (hasLambdaFunctionCall(node)) {
+            if (newSqlType instanceof SqlArray) {
+              SqlArray inputArray = (SqlArray) newSqlType;
+              context.addLambdaInputType(inputArray.getItemType());
+            } else if (newSqlType instanceof SqlMap) {
+              SqlMap inputMap = (SqlMap) newSqlType;
+              context.addLambdaInputType(inputMap.getKeyType());
+              context.addLambdaInputType(inputMap.getValueType());
+            } else {
+              context.addLambdaInputType(newSqlType);
+            }
+          }
+        }
+      }
+
+      /*for (final Expression argExpr : node.getArguments()) {
         process(argExpr, context);
         final SqlType newSqlType = expressionTypeManager.getExpressionSqlType(argExpr, context);
         // for lambdas - if we see this it's the  array/map being passed in we save the type
@@ -211,7 +234,7 @@ public class CodeGenRunner {
         } else {
           argumentTypes.add(SqlArgument.of(newSqlType));
         }
-      }
+      }*/
 
       final UdfFactory holder = functionRegistry.getUdfFactory(functionName);
       final KsqlScalarFunction function = holder.getFunction(argumentTypes);
@@ -305,6 +328,15 @@ public class CodeGenRunner {
           SQL_TO_JAVA_TYPE_CONVERTER.toJavaType(column.type()),
           column.index()
       );
+    }
+
+    private boolean hasLambdaFunctionCall(FunctionCall node) {
+      for (Expression e : node.getArguments()) {
+        if (e instanceof LambdaFunctionCall) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 }

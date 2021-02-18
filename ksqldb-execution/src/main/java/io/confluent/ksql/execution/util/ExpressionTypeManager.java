@@ -81,6 +81,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ExpressionTypeManager {
@@ -474,7 +475,30 @@ public class ExpressionTypeManager {
       final UdfFactory udfFactory = functionRegistry.getUdfFactory(node.getName());
 
       final List<SqlArgument> argTypes = new ArrayList<>();
+
       for (final Expression expression : node.getArguments()) {
+        final TypeContext childContext = expressionTypeContext.getCopy();
+        process(expression, childContext);
+        final SqlType newSqlType = childContext.getSqlType();
+        if (expression instanceof LambdaFunctionCall) {
+          argTypes.add(SqlArgument.of(null, SqlLambda.of(expressionTypeContext.getLambdaInputTypes(), childContext.getSqlType())));
+        } else {
+          argTypes.add(SqlArgument.of(newSqlType, null));
+          if (hasLambdaFunctionCall(node)) {
+            if (newSqlType instanceof SqlArray) {
+              SqlArray inputArray = (SqlArray) newSqlType;
+              expressionTypeContext.addLambdaInputType(inputArray.getItemType());
+            } else if (newSqlType instanceof SqlMap) {
+              SqlMap inputMap = (SqlMap) newSqlType;
+              expressionTypeContext.addLambdaInputType(inputMap.getKeyType());
+              expressionTypeContext.addLambdaInputType(inputMap.getValueType());
+            } else {
+              expressionTypeContext.addLambdaInputType(newSqlType);
+            }
+          }
+        }
+      }
+      /*for (final Expression expression : node.getArguments()) {
         process(expression, expressionTypeContext);
         final SqlType newSqlType = expressionTypeContext.getSqlType();
         if (expression instanceof LambdaFunctionCall) {
@@ -497,7 +521,7 @@ public class ExpressionTypeManager {
             expressionTypeContext.addLambdaInputType(newSqlType);
           }
         }
-      }
+      }*/
 
       final SqlType returnSchema = udfFactory.getFunction(argTypes).getReturnType(argTypes);
       expressionTypeContext.setSqlType(returnSchema);
@@ -612,5 +636,14 @@ public class ExpressionTypeManager {
 
       return previousResult;
     }
+  }
+
+  private boolean hasLambdaFunctionCall(FunctionCall node) {
+    for (Expression e : node.getArguments()) {
+      if (e instanceof LambdaFunctionCall) {
+        return true;
+      }
+    }
+    return false;
   }
 }

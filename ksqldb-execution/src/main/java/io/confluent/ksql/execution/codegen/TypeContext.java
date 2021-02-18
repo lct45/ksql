@@ -24,8 +24,18 @@ import java.util.Map;
 
 public class TypeContext {
   private SqlType sqlType;
-  private final List<SqlType> lambdaInputTypes = new ArrayList<>();
-  private final Map<String, SqlType> lambdaInputTypeMapping = new HashMap<>();
+  private final List<SqlType> lambdaInputTypes;
+  private final Map<String, SqlType> lambdaInputTypeMapping;
+
+  public TypeContext() {
+    lambdaInputTypes = new ArrayList<>();
+    lambdaInputTypeMapping = new HashMap<>();
+  }
+
+  TypeContext (final List<SqlType> lambdaInputTypes, final Map<String, SqlType> lambdaInputTypeMapping) {
+    this.lambdaInputTypes = new ArrayList<>(lambdaInputTypes);
+    this.lambdaInputTypeMapping = new HashMap<>(lambdaInputTypeMapping);
+  }
 
   public SqlType getSqlType() {
     return sqlType;
@@ -61,7 +71,8 @@ public class TypeContext {
     return lambdaInputTypeMapping.get(name);
   }
 
-  public boolean notAllInputsSeen() {
-    return lambdaInputTypeMapping.size() != lambdaInputTypes.size() || lambdaInputTypes.size() == 0;
+
+  public TypeContext getCopy() {
+    return new TypeContext(this.lambdaInputTypes, this.lambdaInputTypeMapping);
   }
 }

@@ -455,7 +455,30 @@ public class SqlToJavaVisitor {
 
       final UdfFactory udfFactory = functionRegistry.getUdfFactory(node.getName());
       final List<SqlArgument> argumentSchemas = new ArrayList<>();
+
       for (final Expression argExpr : node.getArguments()) {
+        final TypeContext childContext = context.getCopy();
+        final SqlType newSqlType = expressionTypeManager.getExpressionSqlType(argExpr, childContext);
+
+        if (argExpr instanceof LambdaFunctionCall) {
+          argumentSchemas.add(SqlArgument.of(SqlLambda.of(context.getLambdaInputTypes(), childContext.getSqlType())));
+        } else {
+          argumentSchemas.add(SqlArgument.of(newSqlType));
+          if (hasLambdaFunctionCall(node)) {
+            if (newSqlType instanceof SqlArray) {
+              SqlArray inputArray = (SqlArray) newSqlType;
+              context.addLambdaInputType(inputArray.getItemType());
+            } else if (newSqlType instanceof SqlMap) {
+              SqlMap inputMap = (SqlMap) newSqlType;
+              context.addLambdaInputType(inputMap.getKeyType());
+              context.addLambdaInputType(inputMap.getValueType());
+            } else {
+              context.addLambdaInputType(newSqlType);
+            }
+          }
+        }
+      }
+      /*for (final Expression argExpr : node.getArguments()) {
         final SqlType newSqlType = expressionTypeManager.getExpressionSqlType(argExpr, context);
         // for lambdas: if it's the  array/map being passed in we save the type for later
         if (context.notAllInputsSeen()) {
@@ -477,7 +500,7 @@ public class SqlToJavaVisitor {
         } else {
           argumentSchemas.add(SqlArgument.of(newSqlType));
         }
-      }
+      }*/
 
       final KsqlFunction function = udfFactory.getFunction(argumentSchemas);
 
@@ -500,7 +523,7 @@ public class SqlToJavaVisitor {
         }
 
         final Pair<String, SqlType> pair =
-            process(convertArgument(arg, sqlType, paramType), context);
+            process(convertArgument(arg, sqlType, paramType), context.getCopy());
         joiner.add(pair.getLeft());
       }
 
@@ -1099,6 +1122,15 @@ public class SqlToJavaVisitor {
     ) {
       return CastEvaluator.generateCode(exp.left, exp.right, sqlType, ksqlConfig);
     }
+  }
+
+  private boolean hasLambdaFunctionCall(FunctionCall node) {
+    for (Expression e : node.getArguments()) {
+      if (e instanceof LambdaFunctionCall) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static final class CaseWhenProcessed {
