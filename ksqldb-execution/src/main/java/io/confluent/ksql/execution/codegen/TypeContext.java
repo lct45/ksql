@@ -65,6 +65,7 @@ public class TypeContext {
     for (int i = 0; i < argumentList.size(); i++) {
       this.lambdaInputTypeMapping.putIfAbsent(argumentList.get(i), lambdaInputTypes.get(i));
     }
+    lambdaInputTypes.clear();
   }
 
   public SqlType getLambdaType(final String name) {

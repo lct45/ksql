@@ -188,6 +188,7 @@ public class CodeGenRunner {
       final List<SqlArgument> argumentTypes = new ArrayList<>();
       final FunctionName functionName = node.getName();
       for (final Expression argExpr : node.getArguments()) {
+        process(argExpr, context.getCopy());
         final TypeContext childContext = context.getCopy();
         final SqlType newSqlType = expressionTypeManager.getExpressionSqlType(argExpr, childContext);
 
@@ -209,32 +210,6 @@ public class CodeGenRunner {
           }
         }
       }
-
-      /*for (final Expression argExpr : node.getArguments()) {
-        process(argExpr, context);
-        final SqlType newSqlType = expressionTypeManager.getExpressionSqlType(argExpr, context);
-        // for lambdas - if we see this it's the  array/map being passed in we save the type
-        if (context.notAllInputsSeen()) {
-          if (newSqlType instanceof SqlArray) {
-            final SqlArray inputArray = (SqlArray) newSqlType;
-            context.addLambdaInputType(inputArray.getItemType());
-          } else if (newSqlType instanceof SqlMap) {
-            final SqlMap inputMap = (SqlMap) newSqlType;
-            context.addLambdaInputType(inputMap.getKeyType());
-            context.addLambdaInputType(inputMap.getValueType());
-          } else {
-            context.addLambdaInputType(newSqlType);
-          }
-        }
-
-        if (argExpr instanceof LambdaFunctionCall) {
-          argumentTypes.add(
-              SqlArgument.of(
-                  SqlLambda.of(context.getLambdaInputTypes(), newSqlType)));
-        } else {
-          argumentTypes.add(SqlArgument.of(newSqlType));
-        }
-      }*/
 
       final UdfFactory holder = functionRegistry.getUdfFactory(functionName);
       final KsqlScalarFunction function = holder.getFunction(argumentTypes);
