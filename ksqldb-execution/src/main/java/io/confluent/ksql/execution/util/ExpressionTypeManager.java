@@ -138,7 +138,6 @@ public class ExpressionTypeManager {
     public Void visitLambdaExpression(
         final LambdaFunctionCall node, final TypeContext context
     ) {
-      context.mapLambdaInputTypes(node.getArguments());
       process(node.getBody(), context);
       return null;
     }
@@ -472,7 +471,7 @@ public class ExpressionTypeManager {
 
       final UdfFactory udfFactory = functionRegistry.getUdfFactory(node.getName());
       final FunctionArgumentsAndContext argumentsAndContext = FunctionArgumentsUtil
-          .getLambdaContextAndType(
+          .getFunctionTypeInfo(
               ExpressionTypeManager.this, 
               node, 
               udfFactory, 

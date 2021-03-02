@@ -183,7 +183,7 @@ public class CodeGenRunner {
     public Void visitFunctionCall(final FunctionCall node, final TypeContext context) {
       final UdfFactory udfFactory = functionRegistry.getUdfFactory(node.getName());
       final FunctionArgumentsAndContext argumentsAndContext = FunctionArgumentsUtil
-          .getLambdaContextAndType(
+          .getFunctionTypeInfo(
               expressionTypeManager,
               node,
               udfFactory,
@@ -268,7 +268,6 @@ public class CodeGenRunner {
 
     @Override
     public Void visitLambdaExpression(final LambdaFunctionCall node, final TypeContext context) {
-      context.mapLambdaInputTypes(node.getArguments());
       process(node.getBody(), context);
       return null;
     }

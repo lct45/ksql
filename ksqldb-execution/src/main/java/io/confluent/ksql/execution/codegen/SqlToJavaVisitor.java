@@ -368,7 +368,6 @@ public class SqlToJavaVisitor {
     public Pair<String, SqlType> visitLambdaExpression(
         final LambdaFunctionCall lambdaFunctionCall, final TypeContext context) {
 
-      context.mapLambdaInputTypes(lambdaFunctionCall.getArguments());
       final Pair<String, SqlType> lambdaBody = process(lambdaFunctionCall.getBody(), context);
 
       final List<Pair<String, Class<?>>> argPairs = new ArrayList<>();
@@ -452,7 +451,7 @@ public class SqlToJavaVisitor {
       final String instanceName = funNameToCodeName.apply(functionName);
       final UdfFactory udfFactory = functionRegistry.getUdfFactory(node.getName());
       final FunctionArgumentsAndContext argumentsAndContext = FunctionArgumentsUtil
-          .getLambdaContextAndType(
+          .getFunctionTypeInfo(
               expressionTypeManager,
               node,
               udfFactory,

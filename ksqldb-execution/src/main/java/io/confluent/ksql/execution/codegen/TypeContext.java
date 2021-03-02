@@ -15,28 +15,23 @@
 
 package io.confluent.ksql.execution.codegen;
 
-import io.confluent.ksql.schema.ksql.types.SqlArray;
-import io.confluent.ksql.schema.ksql.types.SqlMap;
+import com.google.common.collect.ImmutableMap;
+import io.confluent.ksql.schema.ksql.types.SqlLambda;
 import io.confluent.ksql.schema.ksql.types.SqlType;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class TypeContext {
   private SqlType sqlType;
-  private final List<SqlType> lambdaInputTypes;
   private final Map<String, SqlType> lambdaInputTypeMapping;
 
   public TypeContext() {
-    this(new ArrayList<>(), new HashMap<>());
+    this(new HashMap<>());
   }
 
   public TypeContext(
-      final List<SqlType> lambdaInputTypes,
       final Map<String, SqlType> lambdaInputTypeMapping) {
-    this.lambdaInputTypes = lambdaInputTypes;
     this.lambdaInputTypeMapping = lambdaInputTypeMapping;
   }
 
@@ -48,29 +43,6 @@ public class TypeContext {
     this.sqlType = sqlType;
   }
 
-  public List<SqlType> getLambdaInputTypes() {
-    return lambdaInputTypes;
-  }
-
-  public void addLambdaInputType(final SqlType inputType) {
-    this.lambdaInputTypes.add(inputType);
-  }
-
-  public void mapLambdaInputTypes(final List<String> argumentList) {
-    if (lambdaInputTypes.size() != argumentList.size()) {
-      throw new IllegalArgumentException("Was expecting "
-          + lambdaInputTypes.size()
-          + " arguments but found "
-          + argumentList.size() + ", "
-          + argumentList
-          + ". Check your lambda statement.");
-    }
-    for (int i = 0; i < argumentList.size(); i++) {
-      this.lambdaInputTypeMapping.putIfAbsent(argumentList.get(i), lambdaInputTypes.get(i));
-    }
-    lambdaInputTypes.clear();
-  }
-
   public SqlType getLambdaType(final String name) {
     return lambdaInputTypeMapping.get(name);
   }
@@ -78,21 +50,33 @@ public class TypeContext {
 
   public TypeContext getCopy() {
     return new TypeContext(
-        new ArrayList<>(this.lambdaInputTypes),
         new HashMap<>(this.lambdaInputTypeMapping)
     );
   }
 
-  public void visitType(final SqlType type) {
-    if (type instanceof SqlArray) {
-      final SqlArray inputArray = (SqlArray) type;
-      addLambdaInputType(inputArray.getItemType());
-    } else if (type instanceof SqlMap) {
-      final SqlMap inputMap = (SqlMap) type;
-      addLambdaInputType(inputMap.getKeyType());
-      addLambdaInputType(inputMap.getValueType());
-    } else {
-      addLambdaInputType(type);
+  public TypeContext copyWithLambdaVariableTypeMapping(final Map<String, SqlType> variableToType) {
+    final HashMap<String, SqlType> mapping = new HashMap<>(lambdaInputTypeMapping);
+    for (final String v : variableToType.keySet()) {
+      if (mapping.containsKey(v) && !mapping.get(v).equals(variableToType.get(v))) {
+        throw new IllegalStateException(String.format(
+            "Could not resolve type for lambda variable %s, "
+                + "cannot be both %s and %s",
+            v, mapping.get(v).toString(), variableToType.get(v).toString()));
+      }
+      mapping.put(v, variableToType.get(v));
     }
+    return new TypeContext(ImmutableMap.copyOf(mapping));
+  }
+
+  @Override
+  public boolean equals(final Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    final TypeContext context = (TypeContext) o;
+    return lambdaInputTypeMapping.equals(context.lambdaInputTypeMapping);
   }
 }

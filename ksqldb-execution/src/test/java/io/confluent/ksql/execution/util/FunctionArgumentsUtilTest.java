@@ -16,8 +16,10 @@
 package io.confluent.ksql.execution.util;
 
 import static io.confluent.ksql.execution.testutil.TestExpressions.ARRAYCOL;
+import static io.confluent.ksql.execution.testutil.TestExpressions.COL3;
 import static io.confluent.ksql.execution.testutil.TestExpressions.MAPCOL;
 import static io.confluent.ksql.execution.testutil.TestExpressions.SCHEMA;
+import static io.confluent.ksql.execution.testutil.TestExpressions.literal;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,6 +33,7 @@ import io.confluent.ksql.execution.codegen.TypeContext;
 import io.confluent.ksql.execution.expression.tree.ArithmeticBinaryExpression;
 import io.confluent.ksql.execution.expression.tree.ComparisonExpression;
 import io.confluent.ksql.execution.expression.tree.ComparisonExpression.Type;
+import io.confluent.ksql.execution.expression.tree.DoubleLiteral;
 import io.confluent.ksql.execution.expression.tree.FunctionCall;
 import io.confluent.ksql.execution.expression.tree.IntegerLiteral;
 import io.confluent.ksql.execution.expression.tree.LambdaFunctionCall;
@@ -46,10 +49,11 @@ import io.confluent.ksql.function.types.ArrayType;
 import io.confluent.ksql.function.types.GenericType;
 import io.confluent.ksql.function.types.LambdaType;
 import io.confluent.ksql.function.types.MapType;
-import io.confluent.ksql.function.udf.UdfMetadata;
+import io.confluent.ksql.function.types.ParamTypes;
 import io.confluent.ksql.name.FunctionName;
 import io.confluent.ksql.schema.Operator;
 import io.confluent.ksql.schema.ksql.SqlArgument;
+import io.confluent.ksql.schema.ksql.types.SqlArray;
 import io.confluent.ksql.schema.ksql.types.SqlLambda;
 import io.confluent.ksql.schema.ksql.types.SqlLambdaResolved;
 import io.confluent.ksql.schema.ksql.types.SqlType;
@@ -93,54 +97,26 @@ public class FunctionArgumentsUtilTest {
             LambdaType.of(ImmutableList.of(GenericType.of("K"), GenericType.of("V"), GenericType.of("Q")), GenericType.of("K")),
             LambdaType.of(ImmutableList.of(GenericType.of("Q"), GenericType.of("V")), GenericType.of("X"))));
 
-    final FunctionCall expression =
-        new FunctionCall(
-            FunctionName.of("ComplexFunction"),
-            ImmutableList.of(
-                ARRAYCOL,
-                MAPCOL,
-                new StringLiteral("q"),
-                new LambdaFunctionCall(
-                    ImmutableList.of("X", "Y", "Z"),
-                    new SearchedCaseExpression(
-                        ImmutableList.of(
-                            new WhenClause(
-                                new ComparisonExpression(Type.EQUAL, new LambdaVariable("Z"), new StringLiteral("q")),
-                                new LambdaVariable("X")
-                            )
-                        ),
-                        Optional.of(new ArithmeticBinaryExpression(
-                            Operator.ADD,
-                            new LambdaVariable("X"),
-                            new IntegerLiteral(5))
-                        )
-                    )
-                ),
-                new LambdaFunctionCall(
-                    ImmutableList.of("A", "B"),
-                    new ArithmeticBinaryExpression(
-                        Operator.ADD,
-                        new LambdaVariable("B"),
-                        new IntegerLiteral(5))
-                )));
+    final FunctionCall expression = givenFunctionCallWithMultipleLambdas();
+
 
     // When:
     final FunctionArgumentsAndContext argumentsAndContexts = 
-        FunctionArgumentsUtil.getLambdaContextAndType(expressionTypeManager, expression, udfFactory, new TypeContext());
+        FunctionArgumentsUtil.getFunctionTypeInfo(expressionTypeManager, expression, udfFactory, new TypeContext());
 
     // Then:
     assertThat(argumentsAndContexts.getReturnType(), is(SqlTypes.DOUBLE));
     assertThat(argumentsAndContexts.getContexts().size(), is(5));
     assertThat(argumentsAndContexts.getArguments().size(), is(5));
 
-    for (int i = 0; i < 3; i++) {
-      assertThat(argumentsAndContexts.getContexts().get(i).getLambdaInputTypes().size(), is(0));
-    }
     assertThat(argumentsAndContexts.getArguments().get(3), is(SqlArgument.of(SqlLambdaResolved.of(ImmutableList.of(SqlTypes.BIGINT, SqlTypes.DOUBLE, SqlTypes.STRING), SqlTypes.BIGINT))));
-    assertThat(argumentsAndContexts.getContexts().get(3).getLambdaInputTypes(), is(ImmutableList.of(SqlTypes.BIGINT, SqlTypes.DOUBLE, SqlTypes.STRING)));
+    assertThat(argumentsAndContexts.getContexts().get(3).getLambdaType("X"), is(SqlTypes.BIGINT));
+    assertThat(argumentsAndContexts.getContexts().get(3).getLambdaType("Y"), is(SqlTypes.DOUBLE));
+    assertThat(argumentsAndContexts.getContexts().get(3).getLambdaType("Z"), is(SqlTypes.STRING));
 
     assertThat(argumentsAndContexts.getArguments().get(4), is(SqlArgument.of(SqlLambdaResolved.of(ImmutableList.of(SqlTypes.STRING, SqlTypes.DOUBLE), SqlTypes.DOUBLE))));
-    assertThat(argumentsAndContexts.getContexts().get(4).getLambdaInputTypes(), is(ImmutableList.of(SqlTypes.STRING, SqlTypes.DOUBLE)));
+    assertThat(argumentsAndContexts.getContexts().get(4).getLambdaType("A"), is(SqlTypes.STRING));
+    assertThat(argumentsAndContexts.getContexts().get(4).getLambdaType("B"), is(SqlTypes.DOUBLE));
 
     // in the first pass we should have
     verify(udfFactory).getFunction(
@@ -163,6 +139,78 @@ public class FunctionArgumentsUtilTest {
     );
   }
 
+  @Test
+  public void shouldResolveFunctionWithoutLambdas() {
+    // Given:
+    givenUdfWithNameAndReturnType("NoLambdas", SqlTypes.STRING);
+    when(function.parameters()).thenReturn(
+        ImmutableList.of(ParamTypes.STRING));
+
+    final FunctionCall expression = new FunctionCall(FunctionName.of("NoLambdas"), ImmutableList.of(new StringLiteral("a")));
+
+    // When:
+    final FunctionArgumentsAndContext argumentsAndContexts =
+        FunctionArgumentsUtil.getFunctionTypeInfo(expressionTypeManager, expression, udfFactory, new TypeContext());
+
+    // Then:
+    assertThat(argumentsAndContexts.getReturnType(), is(SqlTypes.STRING));
+    assertThat(argumentsAndContexts.getContexts().size(), is(1));
+    assertThat(argumentsAndContexts.getArguments().size(), is(1));
+
+    verify(udfFactory).getFunction(
+        ImmutableList.of(
+            SqlArgument.of(SqlTypes.STRING)
+        )
+    );
+
+    verify(function).getReturnType(
+        ImmutableList.of(
+            SqlArgument.of(SqlTypes.STRING)
+        )
+    );
+  }
+
+  @Test
+  public void shouldResolveLambdaWithoutGenerics() {
+    // Given:
+    givenUdfWithNameAndReturnType("SmallLambda", SqlTypes.DOUBLE);
+    when(function.parameters()).thenReturn(
+        ImmutableList.of(
+            ArrayType.of(ParamTypes.DOUBLE), LambdaType.of(ImmutableList.of(ParamTypes.INTEGER), ParamTypes.INTEGER)));
+
+    final FunctionCall expression = new FunctionCall(FunctionName.of("SmallLambda"),
+        ImmutableList.of(
+            ARRAYCOL,
+            new LambdaFunctionCall(ImmutableList.of("2.3"),
+                new ArithmeticBinaryExpression(
+                    Operator.ADD,
+                    new DoubleLiteral(2.3),
+                    new DoubleLiteral(2.3)))));
+
+    // When:
+    final FunctionArgumentsAndContext argumentsAndContexts =
+        FunctionArgumentsUtil.getFunctionTypeInfo(expressionTypeManager, expression, udfFactory, new TypeContext());
+
+    // Then:
+    assertThat(argumentsAndContexts.getReturnType(), is(SqlTypes.DOUBLE));
+    assertThat(argumentsAndContexts.getContexts().size(), is(2));
+    assertThat(argumentsAndContexts.getArguments().size(), is(2));
+
+    verify(udfFactory).getFunction(
+        ImmutableList.of(
+            SqlArgument.of(SqlTypes.array(SqlTypes.DOUBLE)),
+            SqlArgument.of(SqlLambda.of(1))
+        )
+    );
+
+    verify(function).getReturnType(
+        ImmutableList.of(
+            SqlArgument.of(SqlTypes.array(SqlTypes.DOUBLE)),
+            SqlArgument.of(SqlLambdaResolved.of(ImmutableList.of(SqlTypes.INTEGER), SqlTypes.DOUBLE))
+        )
+    );
+  }
+
   private void givenUdfWithNameAndReturnType(final String name, final SqlType returnType) {
     givenUdfWithNameAndReturnType(name, returnType, udfFactory, function);
   }
@@ -172,5 +220,37 @@ public class FunctionArgumentsUtilTest {
   ) {
     when(factory.getFunction(anyList())).thenReturn(function);
     when(function.getReturnType(anyList())).thenReturn(returnType);
+  }
+
+  private FunctionCall givenFunctionCallWithMultipleLambdas() {
+    return new FunctionCall(
+        FunctionName.of("ComplexFunction"),
+        ImmutableList.of(
+            ARRAYCOL,
+            MAPCOL,
+            new StringLiteral("q"),
+            new LambdaFunctionCall(
+                ImmutableList.of("X", "Y", "Z"),
+                new SearchedCaseExpression(
+                    ImmutableList.of(
+                        new WhenClause(
+                            new ComparisonExpression(Type.EQUAL, new LambdaVariable("Z"), new StringLiteral("q")),
+                            new LambdaVariable("X")
+                        )
+                    ),
+                    Optional.of(new ArithmeticBinaryExpression(
+                        Operator.ADD,
+                        new LambdaVariable("X"),
+                        new IntegerLiteral(5))
+                    )
+                )
+            ),
+            new LambdaFunctionCall(
+                ImmutableList.of("A", "B"),
+                new ArithmeticBinaryExpression(
+                    Operator.ADD,
+                    new LambdaVariable("B"),
+                    new IntegerLiteral(5))
+            )));
   }
 }
